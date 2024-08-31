@@ -61,8 +61,8 @@ def get_space_events(original_events, space_id):
             'isEditable': False,
             'id': space_id + start.replace(" ", "")
         })
-
-
+    
+    return events
 
 def fetch_all_spaces(url, path=[]):
     """Recursively fetch all spaces and build location paths."""
