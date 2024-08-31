@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from google.cloud import storage
+from datetime import datetime
 import requests
 import json
 import os
@@ -15,6 +16,8 @@ BASE_URL = 'https://fenix.tecnico.ulisboa.pt/api/fenix/v1/spaces'
 CACHE_FILE = 'data.json'
 BUCKET_NAME = 'tecnico-spaces-data'  # Replace with your bucket name
 FILE_NAME = 'data.json'
+
+day = datetime.today().strftime('%d/%m/%Y')
 
 def fetch_data(url):
     """Fetch data from a given URL and return the JSON response."""
@@ -34,6 +37,32 @@ def build_location_path(space, path):
             "name": space.get("name")
         }
     ]
+
+def get_space_events(original_events, space_id):
+    """Get events from a specific space."""
+    events = []
+    
+    for event in original_events:
+        if (event.get("type") == 'LESSON'):
+            title = event.get("course").get("name")
+        else: 
+            title = event.get("title")
+        
+        period = event.get("period")
+        start = period.get("start").replace("/", "-")
+        end = period.get("end").replace("/", "-")
+
+        events.append({
+            'title':  title,
+            'time': {
+                'start': start,
+                'end': end
+            },
+            'isEditable': False,
+            'id': space_id + start.replace(" ", "")
+        })
+
+
 
 def fetch_all_spaces(url, path=[]):
     """Recursively fetch all spaces and build location paths."""
@@ -60,11 +89,15 @@ def fetch_all_spaces(url, path=[]):
     for space in spaces:
         location_path = build_location_path(space, path)
         space_info = {
-            "id": space.get("id"),
-            "name": space.get("name"),
-            "type": space.get("type"),
-            "location": path
+            'id': space.get("id"),
+            'name': space.get("name"),
+            'type': space.get("type"),
+            'location': path
         }
+
+        # Add events
+        if space.get("type") == 'ROOM':
+            space_info["events"] = get_space_events(space.get("events", []), space.get("id"))
 
         # Append the space_info to the appropriate list in all_spaces
         space_type = space.get("type")
@@ -73,7 +106,7 @@ def fetch_all_spaces(url, path=[]):
 
         # Recursively fetch child spaces if applicable
         if space_type in ['CAMPUS', 'BUILDING', 'FLOOR']:
-            child_spaces_url = f"{BASE_URL}/{space['id']}"
+            child_spaces_url = f"{BASE_URL}/{space['id']}/?day={day}"
             child_spaces = fetch_all_spaces(child_spaces_url, location_path)
 
             # Merge the child spaces into the current all_spaces dictionary
@@ -108,7 +141,12 @@ def spaces():
 @app.route('/api/fetch-new-data', methods=['GET'])
 def fetch_new_data():
     """Fetch new data from the API and update the cache."""
-    print("Fetching new data...")
+    global day
+    print("Fetching new data..."  + day)
+    
+    # Update time
+    day = datetime.today().strftime('%d/%m/%Y')
+
     all_spaces = fetch_all_spaces(BASE_URL)
     save_data_to_cache(all_spaces)
     print("Data fetched and updated successfully!")
