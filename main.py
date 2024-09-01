@@ -38,8 +38,10 @@ def build_location_path(space, path):
         }
     ]
 
-def get_space_events(original_events, space_id):
+def get_space_events(space_id):
     """Get events from a specific space."""
+    room_data = fetch_data(f"{BASE_URL}/{space_id}/?day={day}")
+    original_events = room_data.get("events", [])
     events = []
     
     for event in original_events:
@@ -97,7 +99,7 @@ def fetch_all_spaces(url, path=[]):
 
         # Add events
         if space.get("type") == 'ROOM':
-            space_info["events"] = get_space_events(space.get("events", []), space.get("id"))
+            space_info["events"] = get_space_events(space.get("id"))
 
         # Append the space_info to the appropriate list in all_spaces
         space_type = space.get("type")
@@ -106,7 +108,7 @@ def fetch_all_spaces(url, path=[]):
 
         # Recursively fetch child spaces if applicable
         if space_type in ['CAMPUS', 'BUILDING', 'FLOOR']:
-            child_spaces_url = f"{BASE_URL}/{space['id']}/?day={day}"
+            child_spaces_url = f"{BASE_URL}/{space['id']}/"
             child_spaces = fetch_all_spaces(child_spaces_url, location_path)
 
             # Merge the child spaces into the current all_spaces dictionary
