@@ -5,6 +5,7 @@ from datetime import datetime
 import requests
 import json
 import os
+from globals import ALWAYSOPEN, MISTAKES, CORRECTIONS, MAPS
 
 
 app = Flask(__name__)
@@ -16,8 +17,6 @@ BASE_URL = 'https://fenix.tecnico.ulisboa.pt/api/fenix/v1/spaces'
 CACHE_FILE = 'data.json'
 BUCKET_NAME = 'tecnico-spaces-data'  # Replace with your bucket name
 FILE_NAME = 'data.json'
-
-day = datetime.today().strftime('%d/%m/%Y')
 
 def fetch_data(url):
     """Fetch data from a given URL and return the JSON response."""
@@ -37,34 +36,6 @@ def build_location_path(space, path):
             "name": space.get("name")
         }
     ]
-
-def get_space_events(space_id):
-    """Get events from a specific space."""
-    room_data = fetch_data(f"{BASE_URL}/{space_id}/?day={day}")
-    original_events = room_data.get("events", [])
-    events = []
-    
-    for event in original_events:
-        if (event.get("type") == 'LESSON'):
-            title = event.get("course").get("name")
-        else: 
-            title = event.get("title")
-        
-        period = event.get("period")
-        start = period.get("start").replace("/", "-")
-        end = period.get("end").replace("/", "-")
-
-        events.append({
-            'title':  title,
-            'time': {
-                'start': start,
-                'end': end
-            },
-            'isEditable': False,
-            'id': space_id + start.replace(" ", "")
-        })
-    
-    return events
 
 def fetch_all_spaces(url, path=[]):
     """Recursively fetch all spaces and build location paths."""
@@ -89,7 +60,6 @@ def fetch_all_spaces(url, path=[]):
 
     # Process each space in the list
     for space in spaces:
-        location_path = build_location_path(space, path)
         space_info = {
             'id': space.get("id"),
             'name': space.get("name"),
@@ -97,18 +67,28 @@ def fetch_all_spaces(url, path=[]):
             'location': path
         }
 
-        # Add events
-        if space.get("type") == 'ROOM':
-            space_info["events"] = get_space_events(space.get("id"))
+        # Error Correction
+        if space_info['id'] in MISTAKES:
+            space_info[CORRECTIONS[space_info['id']]] = CORRECTIONS[space_info['id'] + 'c']
+
+        location_path = build_location_path(space_info, path)
+
+        # Add always Open
+        if space_info["type"] == 'ROOM':
+            space_info["alwaysOpen"] = space_info["name"] in ALWAYSOPEN
+        
+        # Add Maps
+        if space_info["id"] in MAPS:
+            space_info["map"] = MAPS[space_info["id"]]
 
         # Append the space_info to the appropriate list in all_spaces
-        space_type = space.get("type")
-        if space_type in all_spaces:
-            all_spaces[space_type].append(space_info)
+        space_type = space_info["type"]
+
+        all_spaces[space_type].append(space_info)
 
         # Recursively fetch child spaces if applicable
         if space_type in ['CAMPUS', 'BUILDING', 'FLOOR']:
-            child_spaces_url = f"{BASE_URL}/{space['id']}/"
+            child_spaces_url = f"{BASE_URL}/{space['id']}"
             child_spaces = fetch_all_spaces(child_spaces_url, location_path)
 
             # Merge the child spaces into the current all_spaces dictionary
@@ -117,7 +97,6 @@ def fetch_all_spaces(url, path=[]):
                     all_spaces[key].extend(value)
 
     return all_spaces
-
 
 def save_data_to_cache(data):
     """Save data to cache file."""
@@ -140,14 +119,12 @@ def spaces():
         data = json.load(f)
     return data
 
+
 @app.route('/api/fetch-new-data', methods=['GET'])
 def fetch_new_data():
     """Fetch new data from the API and update the cache."""
     global day
-    print("Fetching new data..."  + day)
-    
-    # Update time
-    day = datetime.today().strftime('%d/%m/%Y')
+    print("Fetching new data...")
 
     all_spaces = fetch_all_spaces(BASE_URL)
     save_data_to_cache(all_spaces)
@@ -157,6 +134,38 @@ def fetch_new_data():
     print(len(all_spaces["FLOOR"]))
     print(len(all_spaces["ROOM"]))
     return jsonify({"status": "Data fetched and updated successfully!"}), 200
+
+@app.route('/api/schedule/<space_id>', methods=['GET'])
+def schedule(space_id):
+    day = datetime.today().strftime('%d/%m/%Y')
+    print("Fetching space events data..."  + day)
+    room_data = fetch_data(f"{BASE_URL}/{space_id}?day={day}")
+    original_events = room_data.get("events", [])
+    events = []
+    
+    for event in original_events:
+        if (event.get("type") == 'LESSON'):
+            title = event.get("course").get("name")
+        else: 
+            title = event.get("title")
+        
+        period = event.get("period")
+        start = datetime.strptime(period.get("start"), '%d/%m/%Y %H:%M').strftime('%Y-%m-%d %H:%M')
+        end = datetime.strptime(period.get("end"), '%d/%m/%Y %H:%M').strftime('%Y-%m-%d %H:%M')
+
+
+        events.append({
+            'title':  title,
+            'time': {
+                'start': start,
+                'end': end
+            },
+            'isEditable': False,
+            'id': space_id + start.replace(" ", "")
+        })
+    
+    return jsonify(events)
+
 
 if __name__ == '__main__':
     app.run(port=5000)
