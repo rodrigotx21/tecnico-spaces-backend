@@ -2,6 +2,8 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 from google.cloud import storage
 from datetime import datetime
+from apscheduler.schedulers.background import BackgroundScheduler
+from pytz import timezone
 import requests
 import json
 import os
@@ -123,7 +125,6 @@ def spaces():
 @app.route('/api/fetch-new-data', methods=['GET'])
 def fetch_new_data():
     """Fetch new data from the API and update the cache."""
-    global day
     print("Fetching new data...")
 
     all_spaces = fetch_all_spaces(BASE_URL)
@@ -166,6 +167,13 @@ def schedule(space_id):
     
     return jsonify(events)
 
+def schedule_fetch_new_data():
+    """Schedule the fetch_new_data function to run every Sunday at 3 AM."""
+    scheduler = BackgroundScheduler()
+    timezn = timezone('Europe/Lisbon')
+    scheduler.add_job(fetch_new_data, 'cron', hour=3, minute=0, timezone=timezn)
+    scheduler.start()
 
 if __name__ == '__main__':
+    schedule_fetch_new_data()
     app.run(port=5000)
