@@ -168,6 +168,5 @@ def schedule_fetch_new_data():
     scheduler.start()
 
 if __name__ == '__main__':
-    fetch_new_data()
     schedule_fetch_new_data()
     app.run()
