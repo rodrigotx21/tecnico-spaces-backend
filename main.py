@@ -1,14 +1,13 @@
-from flask import Flask, jsonify, request
-from flask_cors import CORS
-from google.cloud import storage
-from datetime import datetime
-from apscheduler.schedulers.background import BackgroundScheduler
-from pytz import timezone
-import requests
 import json
-import os
-from globals import ALWAYSOPEN, MISTAKES, CORRECTIONS, MAPS
+from datetime import datetime
 
+import requests
+from apscheduler.schedulers.background import BackgroundScheduler
+from flask import Flask, jsonify
+from flask_cors import CORS
+from pytz import timezone
+
+from globals import ALWAYSOPEN, MISTAKES, CORRECTIONS, MAPS
 
 app = Flask(__name__)
 
@@ -39,9 +38,11 @@ def build_location_path(space, path):
         }
     ]
 
-def fetch_all_spaces(url, path=[]):
+def fetch_all_spaces(url, path=None):
     """Recursively fetch all spaces and build location paths."""
     # Initialize a dictionary with lists for each space type
+    if path is None:
+        path = []
     all_spaces = {
         'CAMPUS': [],
         'BUILDING': [],
@@ -102,22 +103,14 @@ def fetch_all_spaces(url, path=[]):
 
 def save_data_to_cache(data):
     """Save data to cache file."""
-    storage_client = storage.Client()
-    bucket = storage_client.bucket(BUCKET_NAME)
-    blob = bucket.blob(FILE_NAME)
-
-    with blob.open('w') as f:
+    with open(CACHE_FILE, 'w') as f:
         json.dump(data, f)
 
 @app.route('/api/spaces', methods=['GET'])
 def spaces():
     """Serve spaces data from cache."""
-    
-    storage_client = storage.Client()
-    bucket = storage_client.bucket(BUCKET_NAME)
-    blob = bucket.blob(FILE_NAME)
 
-    with blob.open('r') as f:
+    with open(CACHE_FILE, 'r') as f:
         data = json.load(f)
     return data
 
@@ -145,7 +138,7 @@ def schedule(space_id):
     events = []
     
     for event in original_events:
-        if (event.get("type") == 'LESSON'):
+        if event.get("type") == 'LESSON':
             title = event.get("course").get("name")
         else: 
             title = event.get("title")
@@ -176,4 +169,4 @@ def schedule_fetch_new_data():
 
 if __name__ == '__main__':
     schedule_fetch_new_data()
-    app.run(port=5000)
+    app.run()
